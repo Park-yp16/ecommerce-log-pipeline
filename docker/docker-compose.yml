@@ -1,0 +1,104 @@
+version: '3.8'
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    PYTHONPATH: /opt/airflow
+  volumes:
+    - ../dags:/opt/airflow/dags
+    - ../spark_jobs:/opt/airflow/spark_jobs
+    - ../scripts:/opt/airflow/scripts
+    - ../data:/opt/airflow/data
+    - airflow-logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - pipeline-net
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+      POSTGRES_MULTIPLE_DATABASES: pipeline_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+    networks:
+      - pipeline-net
+
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c "airflow db migrate &&
+               airflow users create --username admin --password admin
+                 --firstname Admin --lastname User --role Admin
+                 --email admin@example.com"
+    restart: on-failure
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      retries: 3
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+
+  spark-master:
+    image: bitnami/spark:3.5
+    environment:
+      SPARK_MODE: master
+    ports:
+      - "7077:7077"
+      - "8081:8080"
+    volumes:
+      - ../spark_jobs:/opt/spark_jobs
+      - ../data:/opt/data
+    networks:
+      - pipeline-net
+
+  spark-worker:
+    image: bitnami/spark:3.5
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+      SPARK_WORKER_MEMORY: 2G
+      SPARK_WORKER_CORES: 2
+    depends_on:
+      - spark-master
+    volumes:
+      - ../spark_jobs:/opt/spark_jobs
+      - ../data:/opt/data
+    networks:
+      - pipeline-net
+
+volumes:
+  postgres-data:
+  airflow-logs:
+
+networks:
+  pipeline-net:
+    driver: bridge
