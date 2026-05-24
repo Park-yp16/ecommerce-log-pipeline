@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: pipeline_db
+    type: postgres
+    url: postgres:5432
+    database: pipeline_db
+    user: airflow
+    secureJsonData:
+      password: '${POSTGRES_PASSWORD}'
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1500
+    isDefault: true
+    editable: true

@@ -26,7 +26,9 @@ generate_logs ──► spark_transform ──► load_to_postgres ──► val
 | 오케스트레이션 | Apache Airflow 2.x (LocalExecutor) |
 | 데이터 처리 | PySpark 3.5 (local mode) |
 | 저장소 | PostgreSQL 15 |
+| 시각화 | Grafana 10 |
 | 컨테이너 | Docker Compose |
+| CI | GitHub Actions |
 
 ## 파이프라인 흐름
 
@@ -51,9 +53,16 @@ ecommerce-log-pipeline/
 ├── docker/
 │   ├── docker-compose.yml
 │   ├── Dockerfile.airflow
-│   └── Dockerfile.spark
+│   ├── Dockerfile.spark
+│   └── grafana/
+│       └── provisioning/       # Grafana 데이터소스·대시보드 자동 설정
 ├── tests/
-│   └── test_log_generator.py
+│   ├── test_log_generator.py
+│   ├── test_transform.py       # PySpark clean/aggregate 단위 테스트
+│   └── test_dag.py             # DAG 구조·의존성 검증
+├── .github/
+│   └── workflows/ci.yml        # GitHub Actions (pytest 자동 실행)
+├── config.py                   # 파이프라인 파라미터 설정
 ├── .env.example
 └── requirements.txt
 ```
@@ -102,7 +111,10 @@ docker compose up -d
 docker compose ps
 ```
 
-Airflow UI: [http://localhost:8080](http://localhost:8080)
+| 서비스 | URL |
+|--------|-----|
+| Airflow UI | http://localhost:8080 |
+| Grafana | http://localhost:3000 (admin / `.env`의 `GRAFANA_ADMIN_PASSWORD`) |
 
 ### 4. DAG 실행
 
@@ -123,16 +135,40 @@ SELECT * FROM public.daily_summary LIMIT 10;
 SELECT * FROM public.session_stats WHERE etl_date = '2020-09-24' LIMIT 5;
 ```
 
-## 테스트
+## Grafana 대시보드
+
+DAG 실행 후 [http://localhost:3000](http://localhost:3000)에서 자동 프로비저닝된 **Ecommerce Pipeline** 대시보드를 확인할 수 있다.
+
+- 일별 총 세션 수 / 고유 사용자 수 추이
+- 일별 전환율 (구매 완료 세션 비율)
+- 일별 매출액 합계
+- 최근 7일 요약 테이블
+
+## 설정 파라미터 (`config.py`)
+
+환경변수로 동작을 조정할 수 있다. 기본값은 `config.py`에 명시되어 있다.
+
+| 환경변수 | 기본값 | 설명 |
+|----------|--------|------|
+| `SPARK_SHUFFLE_PARTITIONS` | `4` | Spark shuffle 파티션 수 |
+| `DROP_RATE_WARN_THRESHOLD` | `0.05` | 데이터 탈락률 경고 임계값 |
+| `PG_CHUNKSIZE` | `5000` | PostgreSQL 적재 청크 크기 |
+| `DAG_RETRIES` | `2` | 태스크 실패 시 재시도 횟수 |
+| `DAG_RETRY_DELAY_MIN` | `5` | 재시도 대기 시간(분) |
+
+## 테스트 및 CI
 
 ```bash
 pip install -r requirements.txt
 pytest tests/
 ```
 
+push 또는 PR 시 GitHub Actions가 자동으로 `test_log_generator`, `test_transform`을 실행한다.
+
 ## 주요 설계 결정
 
 - **LocalExecutor + local[*] Spark**: 단일 머신에서 운영 파이프라인 구조를 재현하되 인프라 복잡도 최소화
 - **적재 후 검증 태스크 분리**: `validate_load`를 별도 태스크로 분리해 실패 시 알림·재시도 가능
-- **탈락률 5% 경고**: Spark 정제 단계에서 데이터 품질 지표를 로그로 출력
+- **탈락률 경고 임계값 외부화**: `DROP_RATE_WARN_THRESHOLD` 환경변수로 재배포 없이 조정 가능
 - **XCom으로 카운트 전달**: 적재 건수를 XCom으로 전달해 다음 태스크에서 정합성 검증
+- **Grafana 자동 프로비저닝**: 데이터소스·대시보드를 코드로 관리해 `docker compose up` 한 번으로 시각화 환경 구성

@@ -1,0 +1,79 @@
+{
+  "title": "Ecommerce Pipeline",
+  "uid": "ecommerce-pipeline",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "panels": [
+    {
+      "id": 1,
+      "title": "일별 총 세션 수",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": "pipeline_db",
+      "targets": [
+        {
+          "rawSql": "SELECT etl_date AS time, total_sessions FROM public.daily_summary ORDER BY etl_date",
+          "format": "time_series",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "일별 전환율 (%)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": "pipeline_db",
+      "targets": [
+        {
+          "rawSql": "SELECT etl_date AS time, conversion_rate_pct FROM public.daily_summary ORDER BY etl_date",
+          "format": "time_series",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "일별 매출액",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": "pipeline_db",
+      "targets": [
+        {
+          "rawSql": "SELECT etl_date AS time, total_revenue FROM public.daily_summary ORDER BY etl_date",
+          "format": "time_series",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "일별 고유 사용자 수",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": "pipeline_db",
+      "targets": [
+        {
+          "rawSql": "SELECT etl_date AS time, unique_users FROM public.daily_summary ORDER BY etl_date",
+          "format": "time_series",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "최근 7일 요약",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": "pipeline_db",
+      "targets": [
+        {
+          "rawSql": "SELECT etl_date, total_sessions, unique_users, total_purchases, total_revenue, conversion_rate_pct FROM public.daily_summary LIMIT 7",
+          "format": "table",
+          "refId": "E"
+        }
+      ]
+    }
+  ]
+}
