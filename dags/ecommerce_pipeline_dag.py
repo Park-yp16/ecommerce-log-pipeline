@@ -69,7 +69,7 @@ with DAG(
     default_args=default_args,
     description="이커머스 서비스 로그 배치 파이프라인",
     schedule="0 2 * * *",
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2020, 9, 24),
     catchup=False,
     tags=["ecommerce", "log", "batch"],
 ) as dag:
@@ -79,7 +79,6 @@ with DAG(
         bash_command=(
             "python /opt/airflow/scripts/log_generator.py "
             "--date {{ ds }} "
-            "--events 100000 "
             "--output-dir /opt/airflow/data/raw"
         ),
     )
@@ -87,11 +86,16 @@ with DAG(
     spark_transform = BashOperator(
         task_id="spark_transform",
         bash_command=(
-            "spark-submit "
-            "--master spark://spark-master:7077 "
+            "/home/airflow/.local/bin/spark-submit "
             "--conf spark.driver.extraJavaOptions=-Duser.timezone=UTC "
             "/opt/airflow/spark_jobs/transform.py {{ ds }}"
         ),
+        env={
+            "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+            "PATH": "/usr/lib/jvm/java-17-openjdk-amd64/bin:/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "PYSPARK_PYTHON": "/usr/local/bin/python",
+            "PYSPARK_DRIVER_PYTHON": "/usr/local/bin/python",
+        },
     )
 
     load_to_postgres = PythonOperator(
