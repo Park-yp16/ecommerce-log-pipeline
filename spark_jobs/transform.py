@@ -15,6 +15,14 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType
 
+sys.path.insert(0, "/opt/airflow")
+try:
+    from config import SPARK_SHUFFLE_PARTITIONS, DROP_RATE_WARN_THRESHOLD
+except ImportError:
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    from config import SPARK_SHUFFLE_PARTITIONS, DROP_RATE_WARN_THRESHOLD
+
 RAW_BASE = "/opt/airflow/data/raw"
 PARQUET_BASE = "/opt/airflow/data/parquet"
 PROCESSED_BASE = "/opt/airflow/data/processed"
@@ -25,7 +33,7 @@ def build_spark():
         SparkSession.builder
         .master("local[*]")
         .appName("ecommerce-log-transform")
-        .config("spark.sql.shuffle.partitions", "4")
+        .config("spark.sql.shuffle.partitions", str(SPARK_SHUFFLE_PARTITIONS))
         .getOrCreate()
     )
 
@@ -75,8 +83,8 @@ def aggregate_sessions(df, etl_date: str):
 def validate(raw_count: int, clean_count: int) -> None:
     drop_rate = (raw_count - clean_count) / raw_count if raw_count else 0
     print(f"[validate] 원본={raw_count:,}  정제후={clean_count:,}  탈락률={drop_rate:.2%}")
-    if drop_rate > 0.05:
-        print(f"[validate] WARNING: 탈락률 {drop_rate:.2%} > 5% — 로그 품질 확인 필요")
+    if drop_rate > DROP_RATE_WARN_THRESHOLD:
+        print(f"[validate] WARNING: 탈락률 {drop_rate:.2%} > {DROP_RATE_WARN_THRESHOLD:.0%} — 로그 품질 확인 필요")
 
 
 def run(date: str):

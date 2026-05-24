@@ -6,6 +6,8 @@
   generate_logs → spark_transform → load_to_postgres → validate_load
 """
 
+import sys
+import os
 from datetime import datetime, timedelta
 
 from airflow import DAG
@@ -13,10 +15,13 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
+sys.path.insert(0, "/opt/airflow")
+from config import DAG_RETRIES, DAG_RETRY_DELAY_MIN, PG_CONN_ID, PG_CHUNKSIZE
+
 default_args = {
     "owner": "data-engineer",
-    "retries": 2,
-    "retry_delay": timedelta(minutes=5),
+    "retries": DAG_RETRIES,
+    "retry_delay": timedelta(minutes=DAG_RETRY_DELAY_MIN),
     "email_on_failure": False,
 }
 
@@ -28,7 +33,7 @@ def load_parquet_to_postgres(ds: str, **_):
     import pandas as pd
 
     parquet_path = f"/opt/airflow/data/processed/session_stats_{ds}"
-    hook = PostgresHook(postgres_conn_id="pipeline_postgres")
+    hook = PostgresHook(postgres_conn_id=PG_CONN_ID)
     engine = hook.get_sqlalchemy_engine()
 
     df = pd.read_parquet(parquet_path)
@@ -41,7 +46,7 @@ def load_parquet_to_postgres(ds: str, **_):
         if_exists="append",
         index=False,
         method="multi",
-        chunksize=5000,
+        chunksize=PG_CHUNKSIZE,
     )
     print(f"[load] {len(df):,}행 적재 완료 → session_stats (date={ds})")
     return len(df)
@@ -49,7 +54,7 @@ def load_parquet_to_postgres(ds: str, **_):
 
 def validate_load(ds: str, **context):
     """적재 전·후 레코드 수 정합성 검증."""
-    hook = PostgresHook(postgres_conn_id="pipeline_postgres")
+    hook = PostgresHook(postgres_conn_id=PG_CONN_ID)
 
     row = hook.get_first(
         "SELECT COUNT(*) FROM public.session_stats WHERE etl_date = %s", parameters=(ds,)
